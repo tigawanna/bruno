@@ -38,6 +38,15 @@ const AuthMode = ({ collection }) => {
             className="dropdown-item"
             onClick={() => {
               dropdownTippyRef.current.hide();
+              onModeChange('awsv4');
+            }}
+          >
+            AWS Sig v4
+          </div>
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              dropdownTippyRef.current.hide();
               onModeChange('basic');
             }}
           >
@@ -47,10 +56,46 @@ const AuthMode = ({ collection }) => {
             className="dropdown-item"
             onClick={() => {
               dropdownTippyRef.current.hide();
+              onModeChange('wsse');
+            }}
+          >
+            WSSE Auth
+          </div>
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              dropdownTippyRef.current.hide();
               onModeChange('bearer');
             }}
           >
             Bearer Token
+          </div>
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              dropdownTippyRef.current.hide();
+              onModeChange('digest');
+            }}
+          >
+            Digest Auth
+          </div>
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              dropdownTippyRef.current.hide();
+              onModeChange('oauth2');
+            }}
+          >
+            Oauth2
+          </div>
+          <div
+            className="dropdown-item"
+            onClick={() => {
+              dropdownTippyRef.current.hide();
+              onModeChange('apikey');
+            }}
+          >
+            API Key
           </div>
           <div
             className="dropdown-item"

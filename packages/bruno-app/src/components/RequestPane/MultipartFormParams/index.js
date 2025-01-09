@@ -9,9 +9,10 @@ import {
   updateMultipartFormParam,
   deleteMultipartFormParam
 } from 'providers/ReduxStore/slices/collections';
-import SingleLineEditor from 'components/SingleLineEditor';
+import MultiLineEditor from 'components/MultiLineEditor';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
 import StyledWrapper from './StyledWrapper';
+import FilePickerEditor from 'components/FilePickerEditor';
 
 const MultipartFormParams = ({ item, collection }) => {
   const dispatch = useDispatch();
@@ -22,7 +23,20 @@ const MultipartFormParams = ({ item, collection }) => {
     dispatch(
       addMultipartFormParam({
         itemUid: item.uid,
-        collectionUid: collection.uid
+        collectionUid: collection.uid,
+        type: 'text',
+        value: ''
+      })
+    );
+  };
+
+  const addFile = () => {
+    dispatch(
+      addMultipartFormParam({
+        itemUid: item.uid,
+        collectionUid: collection.uid,
+        type: 'file',
+        value: []
       })
     );
   };
@@ -38,6 +52,10 @@ const MultipartFormParams = ({ item, collection }) => {
       }
       case 'value': {
         param.value = e.target.value;
+        break;
+      }
+      case 'contentType': {
+        param.contentType = e.target.value;
         break;
       }
       case 'enabled': {
@@ -71,6 +89,7 @@ const MultipartFormParams = ({ item, collection }) => {
           <tr>
             <td>Key</td>
             <td>Value</td>
+            <td>Content-Type</td>
             <td></td>
           </tr>
         </thead>
@@ -92,10 +111,51 @@ const MultipartFormParams = ({ item, collection }) => {
                       />
                     </td>
                     <td>
-                      <SingleLineEditor
+                      {param.type === 'file' ? (
+                        <FilePickerEditor
+                          value={param.value}
+                          onChange={(newValue) =>
+                            handleParamChange(
+                              {
+                                target: {
+                                  value: newValue
+                                }
+                              },
+                              param,
+                              'value'
+                            )
+                          }
+                          collection={collection}
+                        />
+                      ) : (
+                        <MultiLineEditor
+                          onSave={onSave}
+                          theme={storedTheme}
+                          value={param.value}
+                          onChange={(newValue) =>
+                            handleParamChange(
+                              {
+                                target: {
+                                  value: newValue
+                                }
+                              },
+                              param,
+                              'value'
+                            )
+                          }
+                          onRun={handleRun}
+                          allowNewlines={true}
+                          collection={collection}
+                          item={item}
+                        />
+                      )}
+                    </td>
+                    <td>
+                      <MultiLineEditor
                         onSave={onSave}
                         theme={storedTheme}
-                        value={param.value}
+                        placeholder="Auto"
+                        value={param.contentType}
                         onChange={(newValue) =>
                           handleParamChange(
                             {
@@ -104,7 +164,7 @@ const MultipartFormParams = ({ item, collection }) => {
                               }
                             },
                             param,
-                            'value'
+                            'contentType'
                           )
                         }
                         onRun={handleRun}
@@ -131,9 +191,16 @@ const MultipartFormParams = ({ item, collection }) => {
             : null}
         </tbody>
       </table>
-      <button className="btn-add-param text-link pr-2 py-3 mt-2 select-none" onClick={addParam}>
-        + Add Param
-      </button>
+      <div>
+        <button className="btn-add-param text-link pr-2 pt-3 mt-2 select-none" onClick={addParam}>
+          + Add Param
+        </button>
+      </div>
+      <div>
+        <button className="btn-add-param text-link pr-2 pt-3 select-none" onClick={addFile}>
+          + Add File
+        </button>
+      </div>
     </StyledWrapper>
   );
 };
