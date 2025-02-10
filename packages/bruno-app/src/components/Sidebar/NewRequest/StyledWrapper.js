@@ -35,6 +35,18 @@ const StyledWrapper = styled.div`
       }
     }
   }
+
+  textarea.curl-command {
+    min-height: 150px;
+  }
+
+  .dropdown {
+    width: fit-content;
+  
+   .dropdown-item {
+    padding: 0.2rem 0.6rem !important;
+    }
+  }
 `;
 
 export default StyledWrapper;

@@ -20,6 +20,7 @@ import React from 'react';
  * endsWith    : ends with
  * between     : between
  * isEmpty     : is empty
+ * isNotEmpty  : is not empty
  * isNull      : is null
  * isUndefined : is undefined
  * isDefined   : is defined
@@ -29,6 +30,7 @@ import React from 'react';
  * isNumber    : is number
  * isString    : is string
  * isBoolean   : is boolean
+ * isArray     : is array
  */
 
 const AssertionOperator = ({ operator, onChange }) => {
@@ -50,6 +52,7 @@ const AssertionOperator = ({ operator, onChange }) => {
     'endsWith',
     'between',
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -58,7 +61,8 @@ const AssertionOperator = ({ operator, onChange }) => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   const handleChange = (e) => {

@@ -3,19 +3,21 @@ import React, { useState, useEffect } from 'react';
 const StopWatch = () => {
   const [milliseconds, setMilliseconds] = useState(0);
 
-  const tickInterval = 200;
+  const tickInterval = 100;
   const tick = () => {
-    setMilliseconds(milliseconds + tickInterval);
+    setMilliseconds(_milliseconds => _milliseconds + tickInterval);
   };
 
   useEffect(() => {
-    let timerID = setInterval(() => tick(), tickInterval);
+    let timerID = setInterval(() => {
+      tick()
+    }, tickInterval);
     return () => {
-      clearInterval(timerID);
+      clearTimeout(timerID);
     };
-  });
+  }, []);
 
-  if (milliseconds < 1000) {
+  if (milliseconds < 250) {
     return 'Loading...';
   }
 
@@ -23,4 +25,4 @@ const StopWatch = () => {
   return <span>{seconds.toFixed(1)}s</span>;
 };
 
-export default StopWatch;
+export default React.memo(StopWatch);

@@ -5,7 +5,7 @@ import * as Yup from 'yup';
 import { browseDirectory } from 'providers/ReduxStore/slices/collections/actions';
 import { createCollection } from 'providers/ReduxStore/slices/collections/actions';
 import toast from 'react-hot-toast';
-import Tooltip from 'components/Tooltip';
+import InfoTip from 'components/InfoTip';
 import Modal from 'components/Modal';
 
 const CreateCollection = ({ onClose }) => {
@@ -34,10 +34,10 @@ const CreateCollection = ({ onClose }) => {
     onSubmit: (values) => {
       dispatch(createCollection(values.collectionName, values.collectionFolderName, values.collectionLocation))
         .then(() => {
-          toast.success('Collection created');
+          toast.success('Collection created!');
           onClose();
         })
-        .catch(() => toast.error('An error occurred while creating the collection'));
+        .catch((e) => toast.error('An error occurred while creating the collection - ' + e));
     }
   });
 
@@ -65,7 +65,7 @@ const CreateCollection = ({ onClose }) => {
 
   return (
     <Modal size="sm" title="Create Collection" confirmText="Create" handleConfirm={onSubmit} handleCancel={onClose}>
-      <form className="bruno-form" onSubmit={formik.handleSubmit}>
+      <form className="bruno-form" onSubmit={e => e.preventDefault()}>
         <div>
           <label htmlFor="collection-name" className="flex items-center font-semibold">
             Name
@@ -76,7 +76,12 @@ const CreateCollection = ({ onClose }) => {
             name="collectionName"
             ref={inputRef}
             className="block textbox mt-2 w-full"
-            onChange={formik.handleChange}
+            onChange={(e) => {
+              formik.handleChange(e);
+              if (formik.values.collectionName === formik.values.collectionFolderName) {
+                formik.setFieldValue('collectionFolderName', e.target.value);
+              }
+            }}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -114,9 +119,9 @@ const CreateCollection = ({ onClose }) => {
 
           <label htmlFor="collection-folder-name" className="flex items-center mt-3">
             <span className="font-semibold">Folder Name</span>
-            <Tooltip
+            <InfoTip
               text="This folder will be created under the selected location"
-              tooltipId="collection-folder-name-tooltip"
+              infotipId="collection-folder-name-infotip"
             />
           </label>
           <input

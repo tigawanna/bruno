@@ -2,34 +2,38 @@ import React, { useState, forwardRef, useRef, useEffect } from 'react';
 import classnames from 'classnames';
 import { uuid } from 'utils/common';
 import filter from 'lodash/filter';
-import cloneDeep from 'lodash/cloneDeep';
-import { useDrop } from 'react-dnd';
-import { IconChevronRight, IconDots } from '@tabler/icons';
+import { useDrop, useDrag } from 'react-dnd';
+import { IconChevronRight, IconDots, IconLoader2 } from '@tabler/icons';
 import Dropdown from 'components/Dropdown';
-import { collectionClicked } from 'providers/ReduxStore/slices/collections';
-import { moveItemToRootOfCollection } from 'providers/ReduxStore/slices/collections/actions';
-import { useDispatch } from 'react-redux';
-import { addTab } from 'providers/ReduxStore/slices/tabs';
+import { collapseCollection } from 'providers/ReduxStore/slices/collections';
+import { mountCollection, moveItemToRootOfCollection, moveCollectionAndPersist } from 'providers/ReduxStore/slices/collections/actions';
+import { useDispatch, useSelector } from 'react-redux';
+import { addTab, makeTabPermanent } from 'providers/ReduxStore/slices/tabs';
 import NewRequest from 'components/Sidebar/NewRequest';
 import NewFolder from 'components/Sidebar/NewFolder';
 import CollectionItem from './CollectionItem';
 import RemoveCollection from './RemoveCollection';
-import CollectionProperties from './CollectionProperties';
+import ExportCollection from './ExportCollection';
 import { doesCollectionHaveItemsMatchingSearchText } from 'utils/collections/search';
-import { isItemAFolder, isItemARequest, transformCollectionToSaveToExportAsFile } from 'utils/collections';
-import exportCollection from 'utils/collections/export';
+import { isItemAFolder, isItemARequest } from 'utils/collections';
 
 import RenameCollection from './RenameCollection';
 import StyledWrapper from './StyledWrapper';
+import CloneCollection from './CloneCollection';
+import { areItemsLoading, findItemInCollection } from 'utils/collections';
+import { scrollToTheActiveTab } from 'utils/tabs';
 
 const Collection = ({ collection, searchText }) => {
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [showRenameCollectionModal, setShowRenameCollectionModal] = useState(false);
+  const [showCloneCollectionModalOpen, setShowCloneCollectionModalOpen] = useState(false);
+  const [showExportCollectionModal, setShowExportCollectionModal] = useState(false);
   const [showRemoveCollectionModal, setShowRemoveCollectionModal] = useState(false);
-  const [collectionPropertiesModal, setCollectionPropertiesModal] = useState(false);
-  const [collectionIsCollapsed, setCollectionIsCollapsed] = useState(collection.collapsed);
+  const tabs = useSelector((state) => state.tabs.tabs);
   const dispatch = useDispatch();
+  const isLoading = areItemsLoading(collection);
+  const collectionRef = useRef(null);
 
   const menuDropdownTippyRef = useRef();
   const onMenuDropdownCreate = (ref) => (menuDropdownTippyRef.current = ref);
@@ -51,60 +55,120 @@ const Collection = ({ collection, searchText }) => {
     );
   };
 
-  useEffect(() => {
-    if (searchText && searchText.length) {
-      setCollectionIsCollapsed(false);
-    } else {
-      setCollectionIsCollapsed(collection.collapsed);
+  const ensureCollectionIsMounted = () => {
+    if (collection.mountStatus === 'unmounted') {
+      dispatch(mountCollection({
+        collectionUid: collection.uid,
+        collectionPathname: collection.pathname,
+        brunoConfig: collection.brunoConfig
+      }));
     }
-  }, [searchText, collection]);
+  }
+
+  const hasSearchText = searchText && searchText?.trim()?.length;
+  const collectionIsCollapsed = hasSearchText ? false : collection.collapsed;
 
   const iconClassName = classnames({
     'rotate-90': !collectionIsCollapsed
   });
 
   const handleClick = (event) => {
-    const _menuDropdown = menuDropdownTippyRef.current;
-    switch (event.button) {
-      case 0: // left click
-        dispatch(collectionClicked(collection.uid));
-        return;
-      case 2: // right click
-        if (_menuDropdown) {
-          let menuDropdownBehavior = 'show';
-          if (_menuDropdown.state.isShown) {
-            menuDropdownBehavior = 'hide';
-          }
-          _menuDropdown[menuDropdownBehavior]();
-        }
-        return;
+    if (event.detail != 1) return;
+    // Check if the click came from the chevron icon
+    const isChevronClick = event.target.closest('svg')?.classList.contains('chevron-icon');
+    setTimeout(scrollToTheActiveTab, 50);
+    
+    ensureCollectionIsMounted();
+
+    dispatch(collapseCollection(collection.uid));
+  
+    if(!isChevronClick) {
+      dispatch(
+        addTab({
+          uid: collection.uid,
+          collectionUid: collection.uid,
+          type: 'collection-settings',
+        })
+      );
     }
   };
 
-  const handleExportClick = () => {
-    const collectionCopy = cloneDeep(collection);
-    exportCollection(transformCollectionToSaveToExportAsFile(collectionCopy));
+  const handleDoubleClick = (event) => {
+    dispatch(makeTabPermanent({ uid: collection.uid }))
   };
 
+  const handleCollectionCollapse = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    ensureCollectionIsMounted();
+    dispatch(collapseCollection(collection.uid));
+  }
+
+  const handleRightClick = (event) => {
+    const _menuDropdown = menuDropdownTippyRef.current;
+    if (_menuDropdown) {
+      let menuDropdownBehavior = 'show';
+      if (_menuDropdown.state.isShown) {
+        menuDropdownBehavior = 'hide';
+      }
+      _menuDropdown[menuDropdownBehavior]();
+    }
+  };
+
+  const viewCollectionSettings = () => {
+    dispatch(
+      addTab({
+        uid: uuid(),
+        collectionUid: collection.uid,
+        type: 'collection-settings'
+      })
+    );
+  };
+
+  const isCollectionItem = (itemType) => {
+    return itemType.startsWith('collection-item');
+  };
+  
+  const [{ isDragging }, drag] = useDrag({
+    type: "collection",
+    item: collection,
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+    options: {
+      dropEffect: "move"
+    }
+  });
+  
   const [{ isOver }, drop] = useDrop({
-    accept: `COLLECTION_ITEM_${collection.uid}`,
-    drop: (draggedItem) => {
-      dispatch(moveItemToRootOfCollection(collection.uid, draggedItem.uid));
+    accept: ["collection", `collection-item-${collection.uid}`],
+    drop: (draggedItem, monitor) => {
+      const itemType = monitor.getItemType();
+      if (isCollectionItem(itemType)) {
+        dispatch(moveItemToRootOfCollection(collection.uid, draggedItem.uid))
+      } else {
+        dispatch(moveCollectionAndPersist({draggedItem, targetItem: collection}));
+      }
     },
     canDrop: (draggedItem) => {
-      // todo need to make sure that draggedItem belongs to the collection
-      return true;
+      return draggedItem.uid !== collection.uid;
     },
     collect: (monitor) => ({
-      isOver: monitor.isOver()
-    })
+      isOver: monitor.isOver(),
+    }),
   });
+
+  drag(drop(collectionRef));
 
   if (searchText && searchText.length) {
     if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
       return null;
     }
   }
+
+  const collectionRowClassName = classnames('flex py-1 collection-name items-center', {
+      'item-hovered': isOver
+    });
 
   // we need to sort request items by seq property
   const sortRequestItems = (items = []) => {
@@ -129,20 +193,32 @@ const Collection = ({ collection, searchText }) => {
       {showRemoveCollectionModal && (
         <RemoveCollection collection={collection} onClose={() => setShowRemoveCollectionModal(false)} />
       )}
-      {collectionPropertiesModal && (
-        <CollectionProperties collection={collection} onClose={() => setCollectionPropertiesModal(false)} />
+      {showExportCollectionModal && (
+        <ExportCollection collection={collection} onClose={() => setShowExportCollectionModal(false)} />
       )}
-      <div className="flex py-1 collection-name items-center" ref={drop}>
-        <div className="flex flex-grow items-center overflow-hidden" onMouseUp={handleClick}>
+      {showCloneCollectionModalOpen && (
+        <CloneCollection collection={collection} onClose={() => setShowCloneCollectionModalOpen(false)} />
+      )}
+      <div className={collectionRowClassName}
+      ref={collectionRef}
+      >
+        <div
+          className="flex flex-grow items-center overflow-hidden"
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleRightClick}
+        >
           <IconChevronRight
             size={16}
             strokeWidth={2}
-            className={iconClassName}
+            className={`chevron-icon ${iconClassName}`}
             style={{ width: 16, minWidth: 16, color: 'rgb(160 160 160)' }}
+            onClick={handleCollectionCollapse}
           />
           <div className="ml-1" id="sidebar-collection-name">
             {collection.name}
           </div>
+          {isLoading ? <IconLoader2 className="animate-spin mx-1" size={18} strokeWidth={1.5} /> : null}
         </div>
         <div className="collection-actions">
           <Dropdown onCreate={onMenuDropdownCreate} icon={<MenuIcon />} placement="bottom-start">
@@ -168,6 +244,15 @@ const Collection = ({ collection, searchText }) => {
               className="dropdown-item"
               onClick={(e) => {
                 menuDropdownTippyRef.current.hide();
+                setShowCloneCollectionModalOpen(true);
+              }}
+            >
+              Clone
+            </div>
+            <div
+              className="dropdown-item"
+              onClick={(e) => {
+                menuDropdownTippyRef.current.hide();
                 handleRun();
               }}
             >
@@ -186,7 +271,7 @@ const Collection = ({ collection, searchText }) => {
               className="dropdown-item"
               onClick={(e) => {
                 menuDropdownTippyRef.current.hide();
-                handleExportClick(true);
+                setShowExportCollectionModal(true);
               }}
             >
               Export
@@ -195,19 +280,19 @@ const Collection = ({ collection, searchText }) => {
               className="dropdown-item"
               onClick={(e) => {
                 menuDropdownTippyRef.current.hide();
-                setCollectionPropertiesModal(true);
+                setShowRemoveCollectionModal(true);
               }}
             >
-              Properties
+              Close
             </div>
             <div
               className="dropdown-item"
               onClick={(e) => {
                 menuDropdownTippyRef.current.hide();
-                setShowRemoveCollectionModal(true);
+                viewCollectionSettings();
               }}
             >
-              Remove
+              Settings
             </div>
           </Dropdown>
         </div>

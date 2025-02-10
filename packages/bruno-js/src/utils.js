@@ -18,8 +18,8 @@ const JS_KEYWORDS = `
  * ```js
  * res.data.pets.map(pet => pet.name.toUpperCase())
  *
- * function(context) {
- *   const { res, pet } = context;
+ * function(__bruno__functionInnerContext) {
+ *   const { res, pet } = __bruno__functionInnerContext;
  *   return res.data.pets.map(pet => pet.name.toUpperCase())
  * }
  * ```
@@ -45,9 +45,11 @@ const compileJsExpression = (expr) => {
     globals: globals.map((name) => ` ${name} = ${name} ?? globalThis.${name};`).join('')
   };
 
-  const body = `let { ${code.vars} } = context; ${code.globals}; return ${expr}`;
+  // param name that is unlikely to show up as a var in an expression
+  const param = `__bruno__functionInnerContext`;
+  const body = `let { ${code.vars} } = ${param}; ${code.globals}; return ${expr}`;
 
-  return new Function('context', body);
+  return new Function(param, body);
 };
 
 const internalExpressionCache = new Map();
@@ -83,16 +85,13 @@ const evaluateJsTemplateLiteral = (templateLiteral, context) => {
     return undefined;
   }
 
-  if (templateLiteral.startsWith('"') && templateLiteral.endsWith('"')) {
-    return templateLiteral.slice(1, -1);
-  }
-
-  if (templateLiteral.startsWith("'") && templateLiteral.endsWith("'")) {
-    return templateLiteral.slice(1, -1);
-  }
-
   if (!isNaN(templateLiteral)) {
-    return Number(templateLiteral);
+    const number = Number(templateLiteral);
+    // Check if the number is too high. Too high number might get altered, see #1000
+    if (number > Number.MAX_SAFE_INTEGER) {
+      return templateLiteral;
+    }
+    return number;
   }
 
   templateLiteral = '`' + templateLiteral + '`';
@@ -109,6 +108,7 @@ const createResponseParser = (response = {}) => {
   res.statusText = response.statusText;
   res.headers = response.headers;
   res.body = response.data;
+  res.responseTime = response.responseTime;
 
   res.jq = (expr) => {
     const output = jsonQuery(expr, { data: response.data });

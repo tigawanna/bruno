@@ -5,14 +5,13 @@ import {
   IconFolders,
   IconArrowsSort,
   IconSortAscendingLetters,
-  IconSortDescendingLetters
+  IconSortDescendingLetters,
+  IconX
 } from '@tabler/icons';
-import Collection from '../Collections/Collection';
+import Collection from './Collection';
 import CreateCollection from '../CreateCollection';
 import StyledWrapper from './StyledWrapper';
 import CreateOrOpenCollection from './CreateOrOpenCollection';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
 import { sortCollections } from 'providers/ReduxStore/slices/collections/actions';
 
 // todo: move this to a separate folder
@@ -90,24 +89,35 @@ const Collections = () => {
         <input
           type="text"
           name="search"
+          placeholder="search"
           id="search"
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck="false"
           className="block w-full pl-7 py-1 sm:text-sm"
-          placeholder="search"
+          value={searchText}
           onChange={(e) => setSearchText(e.target.value.toLowerCase())}
         />
+        {searchText !== '' && (
+          <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
+            <span
+              className="close-icon"
+              onClick={() => {
+                setSearchText('');
+              }}
+            >
+              <IconX size={16} strokeWidth={1.5} className="cursor-pointer" />
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-col overflow-y-auto absolute top-32 bottom-10 left-0 right-0">
+      <div className="mt-4 flex flex-col overflow-hidden hover:overflow-y-auto absolute top-32 bottom-10 left-0 right-0">
         {collections && collections.length
           ? collections.map((c) => {
               return (
-                <DndProvider backend={HTML5Backend} key={c.uid}>
-                  <Collection searchText={searchText} collection={c} key={c.uid} />
-                </DndProvider>
+                <Collection searchText={searchText} collection={c} key={c.uid} />
               );
             })
           : null}

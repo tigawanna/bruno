@@ -4,6 +4,8 @@ const { nanoid } = require('nanoid');
 const Bru = require('../bru');
 const BrunoRequest = require('../bruno-request');
 const { evaluateJsTemplateLiteral, evaluateJsExpression, createResponseParser } = require('../utils');
+const { interpolateString } = require('../interpolate-string');
+const { executeQuickJsVm } = require('../sandbox/quickjs');
 
 const { expect } = chai;
 chai.use(require('chai-string'));
@@ -56,6 +58,7 @@ chai.use(function (chai, utils) {
  * endsWith    : ends with
  * between     : between
  * isEmpty     : is empty
+ * isNotEmpty  : is not empty
  * isNull      : is null
  * isUndefined : is undefined
  * isDefined   : is defined
@@ -65,6 +68,7 @@ chai.use(function (chai, utils) {
  * isNumber    : is number
  * isString    : is string
  * isBoolean   : is boolean
+ * isArray     : is array
  */
 const parseAssertionOperator = (str = '') => {
   if (!str || typeof str !== 'string' || !str.length) {
@@ -92,6 +96,7 @@ const parseAssertionOperator = (str = '') => {
     'endsWith',
     'between',
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -100,11 +105,13 @@ const parseAssertionOperator = (str = '') => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   const unaryOperators = [
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -113,7 +120,8 @@ const parseAssertionOperator = (str = '') => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   const [operator, ...rest] = str.trim().split(' ');
@@ -142,6 +150,7 @@ const parseAssertionOperator = (str = '') => {
 const isUnaryOperator = (operator) => {
   const unaryOperators = [
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -150,16 +159,51 @@ const isUnaryOperator = (operator) => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   return unaryOperators.includes(operator);
 };
 
-const evaluateRhsOperand = (rhsOperand, operator, context) => {
+const evaluateJsTemplateLiteralBasedOnRuntime = (literal, context, runtime) => {
+  if (runtime === 'quickjs') {
+    return executeQuickJsVm({
+      script: literal,
+      context,
+      scriptType: 'template-literal'
+    });
+  }
+
+  return evaluateJsTemplateLiteral(literal, context);
+};
+
+const evaluateJsExpressionBasedOnRuntime = (expr, context, runtime) => {
+  if (runtime === 'quickjs') {
+    return executeQuickJsVm({
+      script: expr,
+      context,
+      scriptType: 'expression'
+    });
+  }
+
+  return evaluateJsExpression(expr, context);
+};
+
+const evaluateRhsOperand = (rhsOperand, operator, context, runtime) => {
   if (isUnaryOperator(operator)) {
     return;
   }
+
+  const interpolationContext = {
+    globalEnvironmentVariables: context.bru.globalEnvironmentVariables,
+    collectionVariables: context.bru.collectionVariables,
+    folderVariables: context.bru.folderVariables,
+    requestVariables: context.bru.requestVariables,
+    runtimeVariables: context.bru.runtimeVariables,
+    envVariables: context.bru.envVariables,
+    processEnvVars: context.bru.processEnvVars
+  };
 
   // gracefully allow both a,b as well as [a, b]
   if (operator === 'in' || operator === 'notIn') {
@@ -167,11 +211,19 @@ const evaluateRhsOperand = (rhsOperand, operator, context) => {
       rhsOperand = rhsOperand.substring(1, rhsOperand.length - 1);
     }
 
-    return rhsOperand.split(',').map((v) => evaluateJsTemplateLiteral(v.trim(), context));
+    return rhsOperand
+      .split(',')
+      .map((v) =>
+        evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(v.trim(), interpolationContext), context, runtime)
+      );
   }
 
   if (operator === 'between') {
-    const [lhs, rhs] = rhsOperand.split(',').map((v) => evaluateJsTemplateLiteral(v.trim(), context));
+    const [lhs, rhs] = rhsOperand
+      .split(',')
+      .map((v) =>
+        evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(v.trim(), interpolationContext), context, runtime)
+      );
     return [lhs, rhs];
   }
 
@@ -181,20 +233,37 @@ const evaluateRhsOperand = (rhsOperand, operator, context) => {
       rhsOperand = rhsOperand.substring(1, rhsOperand.length - 1);
     }
 
-    return rhsOperand;
+    return interpolateString(rhsOperand, interpolationContext);
   }
 
-  return evaluateJsTemplateLiteral(rhsOperand, context);
+  return evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(rhsOperand, interpolationContext), context, runtime);
 };
 
 class AssertRuntime {
-  runAssertions(assertions, request, response, envVariables, collectionVariables, collectionPath) {
+  constructor(props) {
+    this.runtime = props?.runtime || 'vm2';
+  }
+
+  runAssertions(assertions, request, response, envVariables, runtimeVariables, processEnvVars) {
+    const globalEnvironmentVariables = request?.globalEnvironmentVariables || {};
+    const collectionVariables = request?.collectionVariables || {};
+    const folderVariables = request?.folderVariables || {};
+    const requestVariables = request?.requestVariables || {};
     const enabledAssertions = _.filter(assertions, (a) => a.enabled);
     if (!enabledAssertions.length) {
       return [];
     }
 
-    const bru = new Bru(envVariables, collectionVariables);
+    const bru = new Bru(
+      envVariables,
+      runtimeVariables,
+      processEnvVars,
+      undefined,
+      collectionVariables,
+      folderVariables,
+      requestVariables,
+      globalEnvironmentVariables
+    );
     const req = new BrunoRequest(request);
     const res = createResponseParser(response);
 
@@ -205,8 +274,13 @@ class AssertRuntime {
     };
 
     const context = {
-      ...envVariables,
+      ...globalEnvironmentVariables,
       ...collectionVariables,
+      ...envVariables,
+      ...folderVariables,
+      ...requestVariables,
+      ...runtimeVariables,
+      ...processEnvVars,
       ...bruContext
     };
 
@@ -219,8 +293,8 @@ class AssertRuntime {
       const { operator, value: rhsOperand } = parseAssertionOperator(rhsExpr);
 
       try {
-        const lhs = evaluateJsExpression(lhsExpr, context);
-        const rhs = evaluateRhsOperand(rhsOperand, operator, context);
+        const lhs = evaluateJsExpressionBasedOnRuntime(lhsExpr, context, this.runtime);
+        const rhs = evaluateRhsOperand(rhsOperand, operator, context, this.runtime);
 
         switch (operator) {
           case 'eq':
@@ -275,6 +349,9 @@ class AssertRuntime {
           case 'isEmpty':
             expect(lhs).to.be.empty;
             break;
+          case 'isNotEmpty':
+            expect(lhs).to.not.be.empty;
+            break;
           case 'isNull':
             expect(lhs).to.be.null;
             break;
@@ -302,6 +379,9 @@ class AssertRuntime {
           case 'isBoolean':
             expect(lhs).to.be.a('boolean');
             break;
+          case 'isArray':
+            expect(lhs).to.be.a('array');
+            break;
           default:
             expect(lhs).to.equal(rhs);
             break;
@@ -327,6 +407,8 @@ class AssertRuntime {
         });
       }
     }
+
+    request.assertionResults = assertionResults;
 
     return assertionResults;
   }
